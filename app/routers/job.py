@@ -163,37 +163,86 @@ def delete_job(
 # =========================
 # SEARCH JOBS
 # =========================
+# =========================
+# SEARCH JOBS
+# =========================
+
 @router.get("/search/")
 def search_jobs(
     keyword: str | None = None,
     location: str | None = None,
     job_type: str | None = None,
     skills: str | None = None,
+    page: int = 1,
+    limit: int = 10,
+    sort: str = "latest",
     db: Session = Depends(get_db)
 ):
+    if page < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Page must be greater than or equal to 1"
+        )
+
+    if limit < 1 or limit > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Limit must be between 1 and 100"
+        )
+
+    if sort not in ["latest", "oldest"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Sort must be either 'latest' or 'oldest'"
+        )
+
     query = db.query(Job)
 
+    # Keyword search
     if keyword:
         query = query.filter(
             (Job.title.ilike(f"%{keyword}%")) |
             (Job.company.ilike(f"%{keyword}%")) |
             (Job.location.ilike(f"%{keyword}%")) |
-            (Job.job_type.ilike(f"%{keyword}%"))
+            (Job.job_type.ilike(f"%{keyword}%")) |
+            (Job.skills.ilike(f"%{keyword}%"))
         )
 
+    # Location filter
     if location:
         query = query.filter(
             Job.location.ilike(f"%{location}%")
         )
 
+    # Job type filter
     if job_type:
         query = query.filter(
             Job.job_type.ilike(f"%{job_type}%")
         )
 
+    # Skills filter
     if skills:
         query = query.filter(
             Job.skills.ilike(f"%{skills}%")
         )
 
-    return query.all()
+    # Total matching jobs
+    total = query.count()
+
+    # Sorting
+    if sort == "latest":
+        query = query.order_by(Job.id.desc())
+    else:
+        query = query.order_by(Job.id.asc())
+
+    # Pagination
+    offset = (page - 1) * limit
+
+    jobs = query.offset(offset).limit(limit).all()
+
+    return {
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "jobs": jobs
+    }
